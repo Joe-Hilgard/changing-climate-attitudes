@@ -20,7 +20,9 @@ intersect(exp2.1$survey_number, exp2.2$survey_number) # not distinct
 exp2.2$survey_number = exp2.2$survey_number + 1000
 intersect(exp2.1$survey_number, exp2.2$survey_number) # distinct
 
-# Looks like only n_s == s has pre/post (altho sometimes pre-only?)
+# n_s means "no-sandwich" / "sandwich"
+# Only "sandwich" has pre-test. Some students did not complete.
+# only n_s == s has pre/post (altho sometimes pre-only?)
 # n_s == n looks like the post-only control
 table(exp2.1$n_s, exp2.1$survey_number)
 table(exp2.2$n_s, exp2.2$survey_number)
@@ -78,6 +80,51 @@ exp2.flat %>%
   facet_grid(party~item)
 
 # Can I reproduce their analyses?
+# All analysese were done separately (essentially as a test and a
+# replication). 
+exp2.1 <- mutate(exp2.1, gw_mean = (gw1_2 + gw2_1 + gw2_2 + gw2_3 + gw2_4)/5,
+                         gw_plus_mean = (gw_mean*5 + lifestyle)/6)
+
+# This is what you get without imputation
+exp2.berk.h1 = lmer(gw_mean ~ pre_post + (1|survey_number), data=exp2.1)
+summary(exp2.berk.h1)
+Anova(exp2.berk.h1, type = 3)
+
+# Or equivalently (I like explicit model comparison)
+exp2.berk.h0 = lmer(gw_mean ~ 1 + (1|survey_number), data=exp2.1)
+anova(exp2.berk.h0, exp2.berk.h1)
+
+# Do we have the same values as private analyses? Yes.
+# Also - Joe, how do the hip kids do this kind of thing in R these days?
+with(exp2.1, tapply(gw_mean, list(pre_post, n_s), mean))
+
+# This isn't how I did it in the paper (I was far less tidy), 
+# but mathematically, this is the same.
+imputed.df <- subset(exp2.1, n_s == 'n', select=c(n_s, survey_number))
+imputed.df$pre_post <- 'pre'
+# Again - ugly, would love more contemporary R idiom examples!
+imputed.df$gw_mean <- mean(subset(exp2.1, n_s == 's' & pre_post == 'pre', select=gw_mean)$gw_mean)
+imputed.df <- rbind(imputed.df, 
+                    select(exp2.1, survey_number, n_s, pre_post, gw_mean))
+
+# We have naively imputed the missing cell
+with(imputed.df, tapply(gw_mean, list(pre_post, n_s), mean))
+
+# Overwriting the above, this would be two-tailed 
+# and under the 0.05 threshold
+exp2.berk.h1 = lmer(gw_mean ~ pre_post + (1|survey_number), data=imputed.df)
+summary(exp2.berk.h1)
+Anova(exp2.berk.h1, type = 3)
+
+# But I had a one-tailed *a priori* hypothesis, 
+# but the above uses all the data it can get 
+# (even when data are unbalanced / missing) - so maybe multcomp is in order
+# But this is what I actually did
+# Again, my crusty R could use some love... 
+# I would just use pandas for such things
+imputed.wide <- spread(imputed.df, pre_post, gw_mean)
+t.test(imputed.wide$pre, imputed.wide$post, alternative = 'less', paired = TRUE)
+
 # Paired-samples t-tests and other within-subjects pre-post analyses
 # Full-sample analysis
 exp2.m1 = lmer(gw_mean ~ time + (1|survey_number), data = exp2) 
