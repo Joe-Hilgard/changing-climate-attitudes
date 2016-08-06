@@ -80,8 +80,8 @@ exp2.flat %>%
   facet_grid(party~item)
 
 # Can I reproduce their analyses?
-# All analysese were done separately (essentially as a test and a
-# replication). 
+# All analysese were done separately by school 
+# (essentially as a test and a replication). 
 exp2.1 <- mutate(exp2.1, gw_mean = (gw1_2 + gw2_1 + gw2_2 + gw2_3 + gw2_4)/5,
                          gw_plus_mean = (gw_mean*5 + lifestyle)/6)
 
@@ -97,6 +97,10 @@ anova(exp2.berk.h0, exp2.berk.h1)
 # Do we have the same values as private analyses? Yes.
 # Also - Joe, how do the hip kids do this kind of thing in R these days?
 with(exp2.1, tapply(gw_mean, list(pre_post, n_s), mean))
+# Hip kids do it this way now with dplyr:
+exp2.1 %>% 
+  group_by(pre_post, n_s) %>% 
+  summarize(mean_gw_mean = mean(gw_mean))
 
 # This isn't how I did it in the paper (I was far less tidy), 
 # but mathematically, this is the same.
@@ -104,16 +108,40 @@ imputed.df <- subset(exp2.1, n_s == 'n', select=c(n_s, survey_number))
 imputed.df$pre_post <- 'pre'
 # Again - ugly, would love more contemporary R idiom examples!
 imputed.df$gw_mean <- mean(subset(exp2.1, n_s == 's' & pre_post == 'pre', select=gw_mean)$gw_mean)
-imputed.df <- rbind(imputed.df, 
+exp2.1.imp <- rbind(imputed.df, 
                     select(exp2.1, survey_number, n_s, pre_post, gw_mean))
 
 # We have naively imputed the missing cell
-with(imputed.df, tapply(gw_mean, list(pre_post, n_s), mean))
+with(exp2.1.imp, tapply(gw_mean, list(pre_post, n_s), mean))
+
+# I'm not sure I'm comfortable with the above!
+# This is a lot of data to impute by single-mean imputation!!
+dim(imputed.df)
+# You've imputed 43 observations with zero variance
+exp2.1.imp %>% 
+  group_by(pre_post, n_s) %>% 
+  summarize(mean = mean(gw_mean), 
+            sd = sd(gw_mean))
+exp2.1.imp %>% 
+  mutate(pre_post = factor(pre_post, levels = c("pre", "post"))) %>% 
+  ggplot(aes(x = pre_post, y = gw_mean)) +
+  geom_point() +
+  geom_line(aes(group = survey_number)) +
+  facet_wrap(~n_s)
+
+# Single mean-imputation tends to underestimate the variance and SE,
+# tends to underestimate covariances, too. 
+# See http://www.iriseekhout.com/missing-data/missing-data-methods/imputation-methods/
+# In this case because you are imputing the cell-mean instead of the overall mean
+# I think there is a risk that the effect size is being overestimated, too.
+# That said, there's an effect in the combined exp2 dataset, right?
+# So maybe not such a big deal.
 
 # Overwriting the above, this would be two-tailed 
 # and under the 0.05 threshold
-exp2.berk.h1 = lmer(gw_mean ~ pre_post + (1|survey_number), data=imputed.df)
-summary(exp2.berk.h1)
+exp2.berk.h1.imp = lmer(gw_mean ~ pre_post + (1|survey_number), 
+                        data=exp2.1.imp)
+summary(exp2.berk.h1.imp)
 Anova(exp2.berk.h1, type = 3)
 
 # But I had a one-tailed *a priori* hypothesis, 
@@ -122,7 +150,7 @@ Anova(exp2.berk.h1, type = 3)
 # But this is what I actually did
 # Again, my crusty R could use some love... 
 # I would just use pandas for such things
-imputed.wide <- spread(imputed.df, pre_post, gw_mean)
+imputed.wide <- spread(exp2.1.imp, pre_post, gw_mean)
 t.test(imputed.wide$pre, imputed.wide$post, alternative = 'less', paired = TRUE)
 
 # Paired-samples t-tests and other within-subjects pre-post analyses
